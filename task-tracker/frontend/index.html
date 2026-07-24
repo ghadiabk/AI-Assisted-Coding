@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta "viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Task Tracker Kanban Board</title>
     <!-- Google Fonts Inter for modernized typography -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -40,7 +40,7 @@
             display: flex;
             justify-content: space-between;
             align-items: center;
-            margin-bottom: 32px;
+            margin-bottom: 24px;
             border-bottom: 1px solid var(--column-border);
             padding-bottom: 20px;
         }
@@ -71,6 +71,55 @@
 
         button.btn-primary:active {
             transform: scale(0.98);
+        }
+
+        /* Filter Control Bar Styles */
+        .filter-bar {
+            display: flex;
+            gap: 12px;
+            margin-bottom: 24px;
+            background-color: var(--column-bg);
+            padding: 12px 16px;
+            border-radius: 8px;
+            border: 1px solid var(--column-border);
+            align-items: center;
+        }
+
+        .filter-bar input, .filter-bar select {
+            padding: 8px 12px;
+            border: 1px solid #cbd5e1;
+            border-radius: 6px;
+            font-size: 0.85rem;
+            box-sizing: border-box;
+            background-color: white;
+            color: var(--text-main);
+            font-family: inherit;
+        }
+
+        .filter-bar input:focus, .filter-bar select:focus {
+            outline: none;
+            border-color: var(--border-focus);
+            box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.15);
+        }
+
+        .filter-bar input[type="text"] {
+            flex-grow: 1;
+        }
+
+        .btn-secondary {
+            background-color: white;
+            color: #475569;
+            border: 1px solid #cbd5e1;
+            padding: 8px 14px;
+            border-radius: 6px;
+            font-size: 0.85rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background-color 0.2s ease;
+        }
+
+        .btn-secondary:hover {
+            background-color: #f1f5f9;
         }
 
         /* Error Banner */
@@ -253,18 +302,18 @@
             box-sizing: border-box;
         }
 
-        .modal-content h3 {
-            margin: 0;
-            font-size: 1.25rem;
-            font-weight: 700;
-            letter-spacing: -0.02em;
-        }
-
         .modal-header {
             display: flex;
             justify-content: space-between;
             align-items: center;
             margin-bottom: 24px;
+        }
+
+        .modal-header h3 {
+            margin: 0;
+            font-size: 1.25rem;
+            font-weight: 700;
+            letter-spacing: -0.02em;
         }
 
         .modal-close {
@@ -348,6 +397,22 @@
             background-color: #f1f5f9;
             color: var(--text-main);
         }
+
+        .card-tags {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 4px;
+            margin-bottom: 12px;
+        }
+        .tag-chip {
+            background-color: #e2e8f0;
+            color: #475569;
+            font-size: 0.7rem;
+            font-weight: 600;
+            padding: 2px 6px;
+            border-radius: 4px;
+            text-transform: lowercase;
+        }
     </style>
 </head>
 <body>
@@ -356,6 +421,19 @@
         <h1>Task Tracker</h1>
         <button class="btn-primary" id="btn-new-task">New Task</button>
     </header>
+
+    <!-- Filter Control Bar -->
+    <div class="filter-bar">
+        <input type="text" id="filter-search" placeholder="Search title or description...">
+        <select id="filter-priority">
+            <option value="">All Priorities</option>
+            <option value="High">High</option>
+            <option value="Medium">Medium</option>
+            <option value="Low">Low</option>
+        </select>
+        <input type="text" id="filter-tag" placeholder="Filter by tag...">
+        <button id="btn-clear-filters" class="btn-secondary">Clear</button>
+    </div>
 
     <div id="global-error"></div>
     <div id="loading-indicator">Loading tasks...</div>
@@ -416,6 +494,10 @@
                     <label for="form-assignee">Assignee</label>
                     <input type="text" id="form-assignee">
                 </div>
+                <div class="form-group">
+                    <label for="form-tags">Tags (comma-separated)</label>
+                    <input type="text" id="form-tags" placeholder="e.g., feature, bug, low-priority">
+                </div>
                 <div class="modal-actions">
                     <button type="button" id="btn-cancel-modal">Cancel</button>
                     <button type="submit" class="btn-primary">Save Task</button>
@@ -432,12 +514,25 @@
 
         let localTasks = [];
 
-        // Fetch tasks and render board
+        // Fetch tasks with dynamic query parameters
         async function fetchTasks() {
             showLoading(true);
             hideGlobalError();
+
+            // Build the query string dynamically
+            const searchVal = document.getElementById('filter-search').value.trim();
+            const priorityVal = document.getElementById('filter-priority').value;
+            const tagVal = document.getElementById('filter-tag').value.trim();
+
+            const params = new URLSearchParams();
+            if (searchVal) params.append('search', searchVal);
+            if (priorityVal) params.append('priority', priorityVal);
+            if (tagVal) params.append('tag', tagVal);
+
+            const url = params.toString() ? `${API_BASE}/tasks?${params.toString()}` : `${API_BASE}/tasks`;
+
             try {
-                const response = await fetch(`${API_BASE}/tasks`);
+                const response = await fetch(url);
                 if (!response.ok) throw new Error("Failed to load tasks from server.");
                 localTasks = await response.json();
                 renderBoard();
@@ -497,9 +592,14 @@
             card.dataset.id = task.id;
             card.dataset.status = task.status;
 
+            const tagsHTML = task.tags && task.tags.length > 0 
+                ? `<div class="card-tags">${task.tags.map(t => `<span class="tag-chip">${escapeHTML(t)}</span>`).join('')}</div>`
+                : '';
+
             card.innerHTML = `
                 <h4>${escapeHTML(task.title)}</h4>
                 <p>${escapeHTML(task.description || '')}</p>
+                ${tagsHTML}
                 <div class="card-meta">
                     <span class="priority-badge priority-${task.priority}">${task.priority}</span>
                     <span>${escapeHTML(task.assignee || 'Unassigned')}</span>
@@ -600,6 +700,7 @@
             taskForm.reset();
             document.getElementById('task-id').value = '';
             document.getElementById('modal-title').innerText = "New Task";
+            document.getElementById('form-tags').value = '';
             hideModalError();
             modal.style.display = 'flex';
         }
@@ -614,6 +715,7 @@
             document.getElementById('form-priority').value = task.priority;
             document.getElementById('form-status').value = task.status;
             document.getElementById('form-assignee').value = task.assignee || '';
+            document.getElementById('form-tags').value = task.tags ? task.tags.join(', ') : '';
 
             document.getElementById('modal-title').innerText = "Edit Task";
             hideModalError();
@@ -642,12 +744,19 @@
             const isEdit = taskId !== '';
             const selectedStatus = document.getElementById('form-status').value;
 
+            // Parse tags input (comma-separated string -> sanitized array)
+            const tagsInput = document.getElementById('form-tags').value;
+            const tagsArray = tagsInput.split(',')
+                                       .map(t => t.trim())
+                                       .filter(t => t !== '');
+
             // Build base payload
             const payload = {
                 title: titleInput,
                 description: document.getElementById('form-description').value || null,
                 priority: document.getElementById('form-priority').value,
-                assignee: document.getElementById('form-assignee').value.trim() || null
+                assignee: document.getElementById('form-assignee').value.trim() || null,
+                tags: tagsArray
             };
 
             // Only send 'status' in the PATCH payload if the status was actually changed
@@ -689,6 +798,26 @@
                 showModalError(err.message);
             }
         });
+
+        // Register Filter Input Event Listeners
+        document.getElementById('filter-search').addEventListener('input', debounce(fetchTasks, 300));
+        document.getElementById('filter-priority').addEventListener('change', fetchTasks);
+        document.getElementById('filter-tag').addEventListener('input', debounce(fetchTasks, 300));
+        document.getElementById('btn-clear-filters').addEventListener('click', () => {
+            document.getElementById('filter-search').value = '';
+            document.getElementById('filter-priority').value = '';
+            document.getElementById('filter-tag').value = '';
+            fetchTasks();
+        });
+
+        // Simple debounce helper to limit API spamming while typing
+        function debounce(func, delay) {
+            let timeout;
+            return function (...args) {
+                clearTimeout(timeout);
+                timeout = setTimeout(() => func.apply(this, args), delay);
+            };
+        }
 
         // Helpers
         function showLoading(show) {

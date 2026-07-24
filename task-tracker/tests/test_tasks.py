@@ -363,3 +363,60 @@ def test_root_endpoint(client):
     data = response.json()
     assert "message" in data
     assert data["message"] == "Task Tracker API"
+
+def test_create_task_with_valid_tags(client):
+    """POST /tasks saves sanitized tags successfully."""
+    response = client.post("/tasks", json={
+        "title": "Clean Garage",
+        "tags": [" home ", "weekend", "   "]  # Contains trailing space, and empty spaces
+    })
+    assert response.status_code == 201
+    data = response.json()
+    assert "tags" in data
+    # Whitespace must be stripped, and empty strings must be ignored
+    assert data["tags"] == ["home", "weekend"]
+
+def test_create_task_invalid_tags_rejected(client):
+    """POST /tasks rejects more than 5 tags or tags longer than 20 characters."""
+    # Test length validation
+    response_long = client.post("/tasks", json={
+        "title": "Task A",
+        "tags": ["a" * 21]
+    })
+    assert response_long.status_code == 422
+
+    # Test count validation
+    response_count = client.post("/tasks", json={
+        "title": "Task B",
+        "tags": ["1", "2", "3", "4", "5", "6"]
+    })
+    assert response_count.status_code == 422
+
+
+def test_filter_tasks_by_text_search(client):
+    """GET /tasks?search=deploy filters tasks by title and description case-insensitively."""
+    client.post("/tasks", json={"title": "Deploy production app", "description": "urgent stuff"})
+    client.post("/tasks", json={"title": "Write documentation", "description": "Need to deploy to docs site"})
+    client.post("/tasks", json={"title": "Buy groceries"})
+
+    # Case-insensitive title match
+    r1 = client.get("/tasks?search=DEPLOY")
+    assert r1.status_code == 200
+    assert len(r1.json()) == 2
+
+    # Description match
+    r2 = client.get("/tasks?search=docs")
+    assert r2.status_code == 200
+    assert len(r2.json()) == 1
+
+def test_filter_tasks_combined_query(client):
+    """GET /tasks with multiple query parameters returns the correct filtered subset."""
+    client.post("/tasks", json={"title": "Fix bug", "priority": "High", "tags": ["bug"]})
+    client.post("/tasks", json={"title": "Write test cases", "priority": "Medium", "tags": ["bug"]})
+    
+    # Combined: tag is 'bug' and priority is 'High'
+    response = client.get("/tasks?tag=bug&priority=High")
+    assert response.status_code == 200
+    data = response.json()
+    assert len(data) == 1
+    assert data[0]["title"] == "Fix bug"

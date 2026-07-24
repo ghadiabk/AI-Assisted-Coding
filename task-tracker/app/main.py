@@ -6,10 +6,10 @@ from fastapi.middleware.cors import CORSMiddleware
 from typing import Optional, List
 
 # Import models
-from app.models import TaskCreate, TaskUpdate, TaskResponse, TaskStatus, TaskPriority
+from app.models.task import TaskCreate, TaskUpdate, TaskResponse, TaskStatus, TaskPriority
 
 # Import storage helpers
-from app.storage import (
+from app.storage.tasks import (
     add_task, get_all_tasks, get_task_by_id, 
     get_tasks_by_status, get_tasks_by_priority,
     update_task, update_task_status, delete_task
@@ -84,44 +84,66 @@ async def create_task(task: TaskCreate):
     - priority: TaskPriority (optional, default MEDIUM)
     - assignee: str (optional, max 255 chars, default None)
     - status: TaskStatus (optional, default TODO)
+    - tags: List[str] (optional, max 5 items, max 20 chars each)
     
     Response: 201 Created with full TaskResponse including id, created_at, updated_at
     """
-    # Create task using storage layer
+    # Create task using storage layer, forwarding tags
     task_dict = add_task(
         title=task.title,
         description=task.description,
         priority=task.priority.value if task.priority else TaskPriority.MEDIUM.value,
-        assignee=task.assignee
+        assignee=task.assignee,
+        tags=task.tags
     )
     
     return TaskResponse(**task_dict)
 
 
 @app.get("/tasks", response_model=List[TaskResponse], status_code=200)
-async def list_tasks(status: Optional[str] = Query(None), priority: Optional[str] = Query(None)):
+async def list_tasks(
+    status: Optional[str] = Query(None), 
+    priority: Optional[str] = Query(None),
+    search: Optional[str] = Query(None),
+    tag: Optional[str] = Query(None)
+):
     """
-    Get all tasks with optional filtering.
+    Get all tasks with optional combined filtering by status, priority, text search, or tag.
     
     Query parameters (optional):
     - status: Filter by TaskStatus (ToDo, InProgress, Done)
     - priority: Filter by TaskPriority (Low, Medium, High)
+    - search: Substring search in title and description (case-insensitive)
+    - tag: Match any tag in task tags list (case-insensitive)
     
     Response: 200 OK with list of TaskResponse objects
     """
-    # Get filtered tasks
-    if status and priority:
-        # Filter by both status and priority
-        tasks = [t for t in get_all_tasks() if t["status"] == status and t["priority"] == priority]
-    elif status:
-        # Filter by status only
-        tasks = get_tasks_by_status(status)
-    elif priority:
-        # Filter by priority only
-        tasks = get_tasks_by_priority(priority)
-    else:
-        # No filters - return all
-        tasks = get_all_tasks()
+    tasks = get_all_tasks()
+
+    # Apply status filter
+    if status:
+        tasks = [t for t in tasks if t.get("status") == status]
+        
+    # Apply priority filter
+    if priority:
+        tasks = [t for t in tasks if t.get("priority") == priority]
+        
+    # Apply tag filter (case-insensitive match against any element in tags list)
+    if tag:
+        tag_lower = tag.lower()
+        tasks = [
+            t for t in tasks 
+            if any(tag_lower == t_tag.lower() for t_tag in t.get("tags", []))
+        ]
+        
+    # Apply search filter (case-insensitive substring match on title or description)
+    if search:
+        search_lower = search.lower()
+        tasks = [
+            t for t in tasks 
+            if (t.get("title") and search_lower in t["title"].lower()) or 
+               (t.get("description") and search_lower in t["description"].lower())
+        ]
     
     return [TaskResponse(**task) for task in tasks]
 
@@ -148,27 +170,16 @@ async def update_task_endpoint(task_id: int = Path(..., gt=0), task_update: Task
     """
     Partially update a task.
     
-    Path parameters:
-    - task_id: int (positive integer)
-    
-    Request body (all optional):
-    - title: str (1-200 chars)
-    - description: str (max 2000 chars)
-    - status: TaskStatus (TODO, IN_PROGRESS, DONE) - validates transitions
-    - priority: TaskPriority
-    - assignee: str (max 255 chars)
-    
     Response: 
     - 200 OK with updated TaskResponse if found
     - 404 Not Found if task not found
-    - 422 Unprocessable Entity if status transition is invalid
+    - 422 Unprocessable Entity if status transition or tags are invalid
     """
     # Get current task
     task_dict = get_task_by_id(task_id)
     if not task_dict:
         raise HTTPException(status_code=404, detail=f"Task {task_id} not found")
     
-    # Track if updates actually occurred
     updated_task_dict = task_dict.copy()
 
     # 1. Handle status updates and transitions
@@ -176,7 +187,7 @@ async def update_task_endpoint(task_id: int = Path(..., gt=0), task_update: Task
         current_status = task_dict["status"]
         new_status = task_update.status.value
         
-        # Always validate status transition (including same-to-same transitions)
+        # Always validate status transition
         if not validate_status_transition(current_status, new_status):
             raise HTTPException(
                 status_code=422, 
@@ -184,10 +195,10 @@ async def update_task_endpoint(task_id: int = Path(..., gt=0), task_update: Task
             )
         updated_task_dict = update_task_status(task_id, new_status)
     
-    # 2. Handle other fields (title, description, priority, assignee)
+    # 2. Handle other fields (title, description, priority, assignee, tags)
     has_other_updates = any(
         getattr(task_update, field) is not None 
-        for field in ["title", "description", "priority", "assignee"]
+        for field in ["title", "description", "priority", "assignee", "tags"]
     )
     
     if has_other_updates:
@@ -196,7 +207,8 @@ async def update_task_endpoint(task_id: int = Path(..., gt=0), task_update: Task
             title=task_update.title if task_update.title is not None else None,
             description=task_update.description if task_update.description is not None else None,
             priority=task_update.priority.value if task_update.priority is not None else None,
-            assignee=task_update.assignee if task_update.assignee is not None else None
+            assignee=task_update.assignee if task_update.assignee is not None else None,
+            tags=task_update.tags if task_update.tags is not None else None
         )
     
     if not updated_task_dict:
@@ -209,11 +221,6 @@ async def update_task_endpoint(task_id: int = Path(..., gt=0), task_update: Task
 async def delete_task_endpoint(task_id: int = Path(..., gt=0)):
     """
     Delete a task.
-    
-    Path parameters:
-    - task_id: int (positive integer)
-    
-    Response: 204 No Content if deleted, 404 Not Found if not found
     """
     deleted = delete_task(task_id)
     if not deleted:

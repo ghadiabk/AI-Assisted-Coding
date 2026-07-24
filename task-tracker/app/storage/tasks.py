@@ -43,10 +43,10 @@ def _save_to_file():
         json.dump(data, f, indent=2, default=str)
 
 
-def add_task(title: str, description: Optional[str], priority: str, assignee: Optional[str]) -> dict:
+def add_task(title: str, description: Optional[str], priority: str, assignee: Optional[str], tags: Optional[List[str]] = None) -> dict:
     """
     Create a new task in storage.
-    Returns the created task dict with id, status, created_at, updated_at.
+    Returns the created task dict with id, status, created_at, updated_at, and tags.
     """
     global _next_id
     
@@ -61,6 +61,7 @@ def add_task(title: str, description: Optional[str], priority: str, assignee: Op
         "status": TaskStatus.TODO.value,
         "priority": priority,
         "assignee": assignee,
+        "tags": tags if tags is not None else [],
         "created_at": now,
         "updated_at": now,
     }
@@ -103,7 +104,7 @@ def get_tasks_by_priority(priority: str) -> List[dict]:
 
 
 def update_task(task_id: int, title: Optional[str], description: Optional[str], 
-                priority: Optional[str], assignee: Optional[str]) -> Optional[dict]:
+                priority: Optional[str], assignee: Optional[str], tags: Optional[List[str]] = None) -> Optional[dict]:
     """
     Partially update a task (not status).
     Only updates fields that are provided (not None).
@@ -114,17 +115,26 @@ def update_task(task_id: int, title: Optional[str], description: Optional[str],
     
     task = _tasks[task_id]
     
+    updated = False
     if title is not None:
         task["title"] = title
+        updated = True
     if description is not None:
         task["description"] = description
+        updated = True
     if priority is not None:
         task["priority"] = priority
+        updated = True
     if assignee is not None:
         task["assignee"] = assignee
+        updated = True
+    if tags is not None:
+        task["tags"] = tags
+        updated = True
     
-    task["updated_at"] = datetime.utcnow().isoformat()
-    _save_to_file()
+    if updated:
+        task["updated_at"] = datetime.utcnow().isoformat()
+        _save_to_file()
     return task
 
 
