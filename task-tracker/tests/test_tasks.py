@@ -370,7 +370,7 @@ def test_create_task_with_valid_tags(client):
         "title": "Clean Garage",
         "tags": [" home ", "weekend", "   "]  # Contains trailing space, and empty spaces
     })
-    assert response.status_code == 200
+    assert response.status_code == 201
     data = response.json()
     assert "tags" in data
     # Whitespace must be stripped, and empty strings must be ignored
