@@ -1,18 +1,23 @@
 # Task Tracker FastAPI Application
-from datetime import datetime
-from fastapi import FastAPI, HTTPException, Query, Path
-from fastapi.responses import JSONResponse
+from datetime import datetime, timezone
+from typing import List, Optional
+from fastapi import FastAPI, HTTPException, Path, Query
 from fastapi.middleware.cors import CORSMiddleware
-from typing import Optional, List
+from fastapi.responses import JSONResponse
 
 # Import models
-from app.models.task import TaskCreate, TaskUpdate, TaskResponse, TaskStatus, TaskPriority
+from app.models.task import TaskCreate, TaskPriority, TaskResponse, TaskStatus, TaskUpdate
 
 # Import storage helpers
 from app.storage.tasks import (
-    add_task, get_all_tasks, get_task_by_id, 
-    get_tasks_by_status, get_tasks_by_priority,
-    update_task, update_task_status, delete_task
+    add_task,
+    delete_task,
+    get_all_tasks,
+    get_task_by_id,
+    get_tasks_by_priority,
+    get_tasks_by_status,
+    update_task,
+    update_task_status,
 )
 
 # Import business logic
@@ -44,24 +49,33 @@ app.add_middleware(
 )
 
 
-# Health check endpoint
-@app.get("/health")
-async def health_check():
-    """
-    Health check endpoint.
-    Returns HTTP 200 with status and timestamp.
+# ============================================================
+# Health and System Endpoints
+# ============================================================
+
+@app.get("/health", response_class=JSONResponse, status_code=200)
+async def health_check() -> JSONResponse:
+    """Health check endpoint to verify system availability.
+
+    Returns:
+        JSONResponse: HTTP 200 response containing operational status and UTC timestamp.
     """
     return JSONResponse(
         status_code=200,
         content={
             "status": "ok",
-            "timestamp": datetime.utcnow().isoformat()
+            "timestamp": datetime.now(timezone.utc).isoformat()
         }
     )
 
-@app.get("/")
-async def root():
-    """Root endpoint."""
+
+@app.get("/", status_code=200)
+async def root() -> dict:
+    """Root application endpoint providing API meta info.
+
+    Returns:
+        dict: Basic API welcome payload and documentation links.
+    """
     return {
         "message": "Task Tracker API",
         "docs_url": "/docs",
@@ -74,21 +88,20 @@ async def root():
 # ============================================================
 
 @app.post("/tasks", response_model=TaskResponse, status_code=201)
-async def create_task(task: TaskCreate):
+async def create_task(task: TaskCreate) -> TaskResponse:
+    """Creates a new task in storage.
+
+    Args:
+        task (TaskCreate): Validated task creation request payload containing title,
+            optional description, priority, assignee, and tags.
+
+    Returns:
+        TaskResponse: Newly created task record with server-generated ID, status ("ToDo"),
+            and creation/update timestamps.
+
+    Raises:
+        HTTPException: HTTP 422 Unprocessable Entity if input fields fail model validation rules.
     """
-    Create a new task.
-    
-    Request body:
-    - title: str (required, 1-200 chars, no leading/trailing whitespace)
-    - description: str (optional, max 2000 chars, default None)
-    - priority: TaskPriority (optional, default MEDIUM)
-    - assignee: str (optional, max 255 chars, default None)
-    - status: TaskStatus (optional, default TODO)
-    - tags: List[str] (optional, max 5 items, max 20 chars each)
-    
-    Response: 201 Created with full TaskResponse including id, created_at, updated_at
-    """
-    # Create task using storage layer, forwarding tags
     task_dict = add_task(
         title=task.title,
         description=task.description,
@@ -96,39 +109,36 @@ async def create_task(task: TaskCreate):
         assignee=task.assignee,
         tags=task.tags
     )
-    
     return TaskResponse(**task_dict)
 
 
 @app.get("/tasks", response_model=List[TaskResponse], status_code=200)
 async def list_tasks(
-    status: Optional[str] = Query(None), 
-    priority: Optional[str] = Query(None),
-    search: Optional[str] = Query(None),
-    tag: Optional[str] = Query(None)
-):
-    """
-    Get all tasks with optional combined filtering by status, priority, text search, or tag.
-    
-    Query parameters (optional):
-    - status: Filter by TaskStatus (ToDo, InProgress, Done)
-    - priority: Filter by TaskPriority (Low, Medium, High)
-    - search: Substring search in title and description (case-insensitive)
-    - tag: Match any tag in task tags list (case-insensitive)
-    
-    Response: 200 OK with list of TaskResponse objects
+    status: Optional[str] = Query(None, description="Filter by TaskStatus (ToDo, InProgress, Done)"),
+    priority: Optional[str] = Query(None, description="Filter by TaskPriority (Low, Medium, High)"),
+    search: Optional[str] = Query(None, description="Substring search in title or description"),
+    tag: Optional[str] = Query(None, description="Exact tag string match (case-insensitive)")
+) -> List[TaskResponse]:
+    """Retrieves all tasks with optional sequential filtering parameters.
+
+    Args:
+        status (Optional[str]): Task status string to filter by.
+        priority (Optional[str]): Task priority string to filter by.
+        search (Optional[str]): Text string to search in title and description.
+        tag (Optional[str]): Tag string to match in task tag arrays.
+
+    Returns:
+        List[TaskResponse]: List of task records matching all combined filter criteria.
+            Returns an empty list `[]` if no records match.
     """
     tasks = get_all_tasks()
 
-    # Apply status filter
     if status:
         tasks = [t for t in tasks if t.get("status") == status]
         
-    # Apply priority filter
     if priority:
         tasks = [t for t in tasks if t.get("priority") == priority]
         
-    # Apply tag filter (case-insensitive match against any element in tags list)
     if tag:
         tag_lower = tag.lower()
         tasks = [
@@ -136,7 +146,6 @@ async def list_tasks(
             if any(tag_lower == t_tag.lower() for t_tag in t.get("tags", []))
         ]
         
-    # Apply search filter (case-insensitive substring match on title or description)
     if search:
         search_lower = search.lower()
         tasks = [
@@ -149,14 +158,19 @@ async def list_tasks(
 
 
 @app.get("/tasks/{task_id}", response_model=TaskResponse, status_code=200)
-async def get_task(task_id: int = Path(..., gt=0)):
-    """
-    Get a single task by ID.
-    
-    Path parameters:
-    - task_id: int (positive integer)
-    
-    Response: 200 OK with TaskResponse if found, 404 Not Found if not found
+async def get_task(
+    task_id: int = Path(..., gt=0, description="Positive integer task ID")
+) -> TaskResponse:
+    """Retrieves a single task record by its unique identifier.
+
+    Args:
+        task_id (int): Unique task ID (must be > 0).
+
+    Returns:
+        TaskResponse: The requested task record if found.
+
+    Raises:
+        HTTPException: HTTP 404 Not Found if no task exists with the given ID.
     """
     task_dict = get_task_by_id(task_id)
     if not task_dict:
@@ -166,16 +180,24 @@ async def get_task(task_id: int = Path(..., gt=0)):
 
 
 @app.patch("/tasks/{task_id}", response_model=TaskResponse, status_code=200)
-async def update_task_endpoint(task_id: int = Path(..., gt=0), task_update: TaskUpdate = None):
+async def update_task_endpoint(
+    task_id: int = Path(..., gt=0, description="Positive integer task ID"),
+    task_update: TaskUpdate = None
+) -> TaskResponse:
+    """Partially updates an existing task, including status transitions and detail fields.
+
+    Args:
+        task_id (int): Unique task ID (must be > 0).
+        task_update (TaskUpdate): Partial task update payload with optional fields.
+
+    Returns:
+        TaskResponse: The updated task record.
+
+    Raises:
+        HTTPException: HTTP 404 Not Found if task ID does not exist.
+        HTTPException: HTTP 422 Unprocessable Entity if requested status transition is invalid
+            or input fields fail validation.
     """
-    Partially update a task.
-    
-    Response: 
-    - 200 OK with updated TaskResponse if found
-    - 404 Not Found if task not found
-    - 422 Unprocessable Entity if status transition or tags are invalid
-    """
-    # Get current task
     task_dict = get_task_by_id(task_id)
     if not task_dict:
         raise HTTPException(status_code=404, detail=f"Task {task_id} not found")
@@ -183,11 +205,11 @@ async def update_task_endpoint(task_id: int = Path(..., gt=0), task_update: Task
     updated_task_dict = task_dict.copy()
 
     # 1. Handle status updates and transitions
-    if task_update.status is not None:
+    if task_update and task_update.status is not None:
         current_status = task_dict["status"]
         new_status = task_update.status.value
         
-        # Always validate status transition
+        # Validate status transition
         if not validate_status_transition(current_status, new_status):
             raise HTTPException(
                 status_code=422, 
@@ -196,20 +218,21 @@ async def update_task_endpoint(task_id: int = Path(..., gt=0), task_update: Task
         updated_task_dict = update_task_status(task_id, new_status)
     
     # 2. Handle other fields (title, description, priority, assignee, tags)
-    has_other_updates = any(
-        getattr(task_update, field) is not None 
-        for field in ["title", "description", "priority", "assignee", "tags"]
-    )
-    
-    if has_other_updates:
-        updated_task_dict = update_task(
-            task_id,
-            title=task_update.title if task_update.title is not None else None,
-            description=task_update.description if task_update.description is not None else None,
-            priority=task_update.priority.value if task_update.priority is not None else None,
-            assignee=task_update.assignee if task_update.assignee is not None else None,
-            tags=task_update.tags if task_update.tags is not None else None
+    if task_update:
+        has_other_updates = any(
+            getattr(task_update, field) is not None 
+            for field in ["title", "description", "priority", "assignee", "tags"]
         )
+        
+        if has_other_updates:
+            updated_task_dict = update_task(
+                task_id,
+                title=task_update.title if task_update.title is not None else None,
+                description=task_update.description if task_update.description is not None else None,
+                priority=task_update.priority.value if task_update.priority is not None else None,
+                assignee=task_update.assignee if task_update.assignee is not None else None,
+                tags=task_update.tags if task_update.tags is not None else None
+            )
     
     if not updated_task_dict:
         raise HTTPException(status_code=404, detail=f"Task {task_id} not found")
@@ -218,9 +241,19 @@ async def update_task_endpoint(task_id: int = Path(..., gt=0), task_update: Task
 
 
 @app.delete("/tasks/{task_id}", status_code=204)
-async def delete_task_endpoint(task_id: int = Path(..., gt=0)):
-    """
-    Delete a task.
+async def delete_task_endpoint(
+    task_id: int = Path(..., gt=0, description="Positive integer task ID")
+) -> None:
+    """Deletes a task record from storage by its ID.
+
+    Args:
+        task_id (int): Unique task ID (must be > 0).
+
+    Returns:
+        None: Returns HTTP 204 No Content upon successful deletion.
+
+    Raises:
+        HTTPException: HTTP 404 Not Found if task ID does not exist.
     """
     deleted = delete_task(task_id)
     if not deleted:

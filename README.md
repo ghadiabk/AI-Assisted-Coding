@@ -70,3 +70,7 @@ pytest tests/ -k "tags" -v
 # Run only the status transition tests:
 
 pytest tests/ -k "transition" -v
+
+
+## Technical Decisions
+* [Architecture Decision: In-Memory Storage Layer](docs/decisions/in-memory-storage.md)
