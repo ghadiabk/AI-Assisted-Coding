@@ -74,3 +74,22 @@ pytest tests/ -k "transition" -v
 
 ## Technical Decisions
 * [Architecture Decision: In-Memory Storage Layer](docs/decisions/in-memory-storage.md)
+
+
+
+## Final Project
+
+Branch reviewed: `final-project`
+
+### What this submission demonstrates
+- Existing Task Tracker app still runs inside the intended course scope.
+- CI runs the pytest suite on push and/or pull request.
+- Docker image builds and runs with `/health` returning 200.
+- AI review, security, and ownership evidence is in `docs/`.
+
+### How to run locally
+```bash
+python -m venv venv
+source venv/bin/activate  # On Windows: .\venv\Scripts\Activate.ps1
+pip install -r requirements.txt
+uvicorn app.main:app --reload --port 8000
