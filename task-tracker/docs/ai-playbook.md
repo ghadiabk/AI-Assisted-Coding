@@ -17,6 +17,15 @@
 * **Always Run:** I will never accept an AI code diff without running `pytest` or verifying browser behavior locally first.
 * **Break Test Proof:** I will verify new tests by deliberately breaking source code to confirm the test fails before accepting it as green.
 
+### My review rules
+* Read the diff before approving any file edits.
+* Triage AI code review comments into Useful, Noise, or Wrong before making code edits.
+* Reject any AI output that suppresses error symptoms instead of fixing root causes.
+
+### What I am still figuring out
+* How to best configure repository context limits for larger multi-service codebases without overwhelming the AI context window.
+* When to transition from lightweight in-memory storage prototyping to a full relational database model during early-stage development.
+
 ---
 
 ## 2. Decision Card

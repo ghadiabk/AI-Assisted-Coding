@@ -2,9 +2,9 @@ name: Task Tracker CI
 
 on:
   push:
-    branches: [ main, mid-course-project ]
+    branches: [ main, mid-course-project, final-project ]
   pull_request:
-    branches: [ main ]
+    branches: [ main, final-project ]
   workflow_dispatch:  # Enables manual "Run workflow" button in GitHub Actions UI
 
 jobs:

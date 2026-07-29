@@ -87,9 +87,77 @@ Branch reviewed: `final-project`
 - Docker image builds and runs with `/health` returning 200.
 - AI review, security, and ownership evidence is in `docs/`.
 
-### How to run locally
+---
+
+## Technical Stack & Features
+* **Backend:** Python 3.12+, FastAPI, Pydantic v2 validation, in-memory JSON file persistence.
+* **Frontend:** Vanilla HTML5/CSS3/JavaScript (ES6+), Native HTML5 Drag-and-Drop, debounced live filter bar, modal form workflows.
+* **Testing:** `pytest` and `httpx.TestClient` test suite.
+
+---
+
+## Getting Started
+
+### 1. Prerequisites & Virtual Environment Setup
+
+Clone the repository and switch to the `final-project` branch:
 ```bash
+git checkout final-project
+```
+
+## Navigate to the project subfolder:
+cd task-tracker
+
+## Create and activate a Python virtual environment:
+
+# On Windows (PowerShell):
 python -m venv venv
-source venv/bin/activate  # On Windows: .\venv\Scripts\Activate.ps1
+.\venv\Scripts\Activate.ps1
+
+# On macOS / Linux:
+python3 -m venv venv
+source venv/bin/activate
+
+## Install project dependencies:
 pip install -r requirements.txt
+
+
+### 2. Running the Backend Server
+
+## Ensure you are inside the task-tracker/ directory and run:
+cd task-tracker
 uvicorn app.main:app --reload --port 8000
+
+# Verify that the server is running by opening:
+Health Check: http://localhost:8000/health (Should return HTTP 200 {"status": "ok", ...})
+Interactive API Docs (Swagger UI): http://localhost:8000/docs
+
+
+### 3. Opening the Frontend Interface
+
+## With the backend server running on port 8000:
+# Locate task-tracker/frontend/index.html in your workspace.
+# Open the file in your web browser:
+Recommended: Use the Live Server extension in VS Code (served at http://127.0.0.1:5500 or http://localhost:5500).
+
+
+### 4. Running the Test Suite
+
+# Navigate to the task-tracker/ directory and execute the complete test suite:
+cd task-tracker
+pytest tests/ -v
+
+
+### How to run with Docker
+cd task-tracker
+docker build -t task-tracker:dev .
+docker run --rm -d -p 8000:8000 --name tt-dev task-tracker:dev
+curl http://localhost:8000/health
+docker exec tt-dev whoami
+docker stop tt-dev
+
+
+### AI assistance summary
+AI helped draft or review: CI pipeline configuration (ci.yml), multi-stage Dockerfile setup, Pydantic v2 schemas, and docstring formatting.
+I verified the work by: running pytest locally (36 passing tests), inspecting git diffs, running Docker container health checks, and validating non-root user execution (whoami returning appuser).
+One AI suggestion I rejected or corrected: Fixed duplicate event listener accumulation in frontend/index.html by switching from .addEventListener() to direct property assignment (element.ondrop) to prevent double status-transition requests.
