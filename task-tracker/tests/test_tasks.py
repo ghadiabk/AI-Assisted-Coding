@@ -383,7 +383,7 @@ def test_create_task_invalid_tags_rejected(client):
         "title": "Task A",
         "tags": ["a" * 21]
     })
-    assert response_long.status_code == 420
+    assert response_long.status_code == 422
 
     # Test count validation
     response_count = client.post("/tasks", json={
